@@ -1,0 +1,5 @@
+videos/
+venv/
+tests/
+frames/
+__pycache__/
