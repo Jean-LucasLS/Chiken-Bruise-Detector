@@ -34,7 +34,7 @@ def bruiser_detector(frame):
   mask2 = cv2.inRange(hsv, lower_color2, upper_color2)
   mask  = cv2.bitwise_or(mask1, mask2)
 
-  # Dilation to increase the size of the red areas
+  # Dilation to increase the areas size detection
   kernel = np.ones((50, 50), np.uint8)
   mask   = cv2.dilate(mask, kernel, iterations=1)
   
