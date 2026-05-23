@@ -1,40 +1,84 @@
+"""
+Frame Capture & Bruise Annotation Pipeline
+==========================================
+Reads a video file, samples frames at a configurable time interval,
+runs bruise detection on each sampled frame, and writes the annotated
+images to an output directory.
+
+Usage:
+    python frame_capture.py
+
+    Press 'q' during playback to stop early.
+"""
+
+import logging
+import os
+
 import cv2
 
-from bruiser_detection import bruiser_detector
+from bruiser_detection import detect_bruises
 
-VIDEO_PATH   = 'videos/Frango1.mp4'
-FRAME_CAP    = 1 # Set the seconds between frame captures
+# ---------------------------------------------------------------------------
+# Configuration
+# ---------------------------------------------------------------------------
+VIDEO_PATH:       str   = "videos/Frango1.mp4"
+OUTPUT_DIR:       str   = "frames"
+CAPTURE_INTERVAL: float = 1.0  # Seconds between captured frames
 
-cap = cv2.VideoCapture(VIDEO_PATH)
-if not cap.isOpened(): exit('Error')
+logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+logger = logging.getLogger(__name__)
 
-fps_rate    = cap.get(cv2.CAP_PROP_FPS) # Get the frame rate per second
-interval    = int(fps_rate * FRAME_CAP) # Calculate the interval in frames
-frame_index = 0
 
-WAIT_TIME   = int(1000 / fps_rate) # Calculate the wait time to play the video in real-time (1x)
+def process_video(video_path: str, output_dir: str, capture_interval: float) -> None:
+    """
+    Sample frames from a video, annotate bruise regions, and save to disk.
 
-while cap.isOpened():
-  ret, frame = cap.read()
+    Args:
+        video_path:       Path to the source video file.
+        output_dir:       Directory where annotated frames are saved.
+        capture_interval: Time in seconds between sampled frames.
+    """
+    os.makedirs(output_dir, exist_ok=True)
 
-  if ret:
-    if frame_index % interval == 0:
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        logger.error("Could not open video: %s", video_path)
+        return
 
-      frame = bruiser_detector(frame)
+    fps        = cap.get(cv2.CAP_PROP_FPS)
+    frame_step = max(1, int(fps * capture_interval))
+    wait_ms    = max(1, int(1000 / fps))
+    frame_idx  = 0
 
-      frame_name = f'frames/frame_{int(frame_index/fps_rate):04d}.jpg'
-      cv2.imwrite(frame_name, frame)
-      print(f'Saving {frame_name}')
+    logger.info(
+        "Processing '%s' | %.2f fps | sampling every %d frames",
+        video_path, fps, frame_step,
+    )
 
-    frame_index += 1
+    try:
+        while cap.isOpened():
+            ret, frame = cap.read()
+            if not ret:
+                break
 
-    if cv2.waitKey(WAIT_TIME) & 0xFF == ord('q'): # Press 'q' to stop the video
-      break
+            if frame_idx % frame_step == 0:
+                annotated   = detect_bruises(frame)
+                timestamp   = int(frame_idx / fps)
+                output_path = os.path.join(output_dir, f"frame_{timestamp:04d}.jpg")
+                cv2.imwrite(output_path, annotated)
+                logger.info("Saved  %s", output_path)
 
-  else:
-    break
+            cv2.imshow("Bruise Detection", frame)
+            if cv2.waitKey(wait_ms) & 0xFF == ord("q"):
+                logger.info("Playback interrupted by user.")
+                break
 
-  cv2.imshow('Video', frame)
+            frame_idx += 1
 
-cap.release()
-cv2.destroyAllWindows()
+    finally:
+        cap.release()
+        cv2.destroyAllWindows()
+
+
+if __name__ == "__main__":
+    process_video(VIDEO_PATH, OUTPUT_DIR, CAPTURE_INTERVAL)
